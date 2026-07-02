@@ -406,7 +406,7 @@
   }
 
   .product-item {
-    display: flex; align-items: center; gap: 10px; padding: 10px 0;
+    display: flex; align-items: center; gap: 10px; padding: 12px 0;
     border-bottom: var(--border-width) solid var(--border);
   }
   .product-item:last-child { border-bottom: none; }
@@ -847,7 +847,7 @@
       </select>
       <div class="preview-box" id="product-preview" style="display:none;">
         <img class="thumb" id="preview-img" src="">
-        <span id="preview-name" style="font-size:13px; color:var(--text-muted); font-weight: 500;"></span>
+        <span id="preview-name" style="font-size:13px; color:var(--text-muted); font-weight: 500; line-height: 1.5;"></span>
       </div>
     </div>
 
@@ -862,17 +862,6 @@
       <input type="number" id="qty" min="1" value="1" inputmode="numeric">
     </div>
 
-    <div class="row field">
-      <div>
-        <label>日圓貨價（選填）</label>
-        <input type="number" id="jpyPrice" min="0" step="any" inputmode="decimal" placeholder="円">
-      </div>
-      <div>
-        <label>港幣貨價（選填）</label>
-        <input type="number" id="hkdPrice" min="0" step="any" inputmode="decimal" placeholder="HKD">
-      </div>
-    </div>
-
     <button class="btn-primary" onclick="addOrder()">加入記錄</button>
   </div>
 </div>
@@ -884,6 +873,22 @@
     <div class="field">
       <label>產品名稱</label>
       <input type="text" id="new-product-name" placeholder="例如：Sanrio 浴墊系列">
+    </div>
+
+    <div class="field">
+      <label>供應商（選填，例如：松本清 / 澀谷 Donki）</label>
+      <input type="text" id="new-product-supplier" placeholder="例如：松本清 / 澀谷 Donki">
+    </div>
+
+    <div class="row field">
+      <div>
+        <label>日圓貨價（選填）</label>
+        <input type="number" id="new-product-jpyPrice" min="0" step="any" inputmode="decimal" placeholder="円">
+      </div>
+      <div>
+        <label>港幣貨價（選填）</label>
+        <input type="number" id="new-product-hkdPrice" min="0" step="any" inputmode="decimal" placeholder="HKD">
+      </div>
     </div>
     
     <!-- 拖放與點選上傳區 -->
@@ -1072,6 +1077,11 @@ alter table orders disable row level security;
         <label>港幣貨價</label>
         <input type="number" id="edit-hkdPrice" min="0" step="any">
       </div>
+    </div>
+
+    <div class="field">
+      <label>供應商</label>
+      <input type="text" id="edit-supplier" placeholder="例如：松本清 / 澀谷 Donki">
     </div>
 
     <div class="field">
@@ -1314,7 +1324,8 @@ alter table orders disable row level security;
       jpyprice: o.jpyPrice,
       hkdprice: o.hkdPrice,
       status: o.status,
-      time: o.time
+      time: o.time,
+      supplier: o.supplier
     };
   }
   function mapFromDBOrder(db) {
@@ -1329,11 +1340,30 @@ alter table orders disable row level security;
       jpyPrice: db.jpyprice,
       hkdPrice: db.hkdprice,
       status: db.status,
-      time: db.time
+      time: db.time,
+      supplier: db.supplier || ''
     };
   }
-  function mapToDBProduct(p) { return { id: p.id, name: p.name, photo: p.photo }; }
-  function mapFromDBProduct(db) { return { id: db.id, name: db.name, photo: db.photo }; }
+  function mapToDBProduct(p) {
+    return {
+      id: p.id,
+      name: p.name,
+      photo: p.photo,
+      jpyprice: p.jpyPrice,
+      hkdprice: p.hkdPrice,
+      supplier: p.supplier
+    };
+  }
+  function mapFromDBProduct(db) {
+    return {
+      id: db.id,
+      name: db.name,
+      photo: db.photo,
+      jpyPrice: db.jpyprice,
+      hkdPrice: db.hkdprice,
+      supplier: db.supplier || ''
+    };
+  }
 
   // 雲端通用讀寫
   async function cloudGetAll(table) {
@@ -1658,14 +1688,27 @@ alter table orders disable row level security;
     const name = document.getElementById('new-product-name').value.trim();
     if (!name) { alert('請輸入產品名稱'); return; }
     
-    const newProd = { id: Date.now(), name: name, photo: pendingPhoto || '' };
+    const supplier = document.getElementById('new-product-supplier').value.trim();
+    const jpyPrice = document.getElementById('new-product-jpyPrice').value;
+    const hkdPrice = document.getElementById('new-product-hkdPrice').value;
+
+    const newProd = {
+      id: Date.now(),
+      name: name,
+      photo: pendingPhoto || '',
+      supplier: supplier || '',
+      jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
+      hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null
+    };
     
     await saveData_Product(newProd);
     products.push(newProd);
 
     // 恢復預設值
     document.getElementById('new-product-name').value = '';
-    document.getElementById('new-product-photo').value = '';
+    document.getElementById('new-product-supplier').value = '';
+    document.getElementById('new-product-jpyPrice').value = '';
+    document.getElementById('new-product-hkdPrice').value = '';
     document.getElementById('new-product-preview').style.display = 'none';
     document.querySelector('.drop-zone-text').style.display = 'block';
     pendingPhoto = null;
@@ -1694,7 +1737,13 @@ alter table orders disable row level security;
     container.innerHTML = filteredProducts.map(p => `
       <div class="product-item">
         ${p.photo ? `<img class="thumb" src="${p.photo}">` : `<div class="thumb"></div>`}
-        <div class="product-name">${escapeHtml(p.name)}</div>
+        <div class="product-name">
+          <div style="font-weight: 600;">${escapeHtml(p.name)}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+            ${p.supplier ? `📍 供應商: ${escapeHtml(p.supplier)}` : ''} 
+            ${(p.jpyPrice || p.hkdPrice) ? ` | ${p.jpyPrice ? '¥' + p.jpyPrice : ''} ${p.hkdPrice ? '$' + p.hkdPrice : ''}` : ''}
+          </div>
+        </div>
         <button class="del-btn" onclick="deleteProduct(${p.id})">✕</button>
       </div>
     `).join('');
@@ -1729,8 +1778,21 @@ alter table orders disable row level security;
     if (!id) { preview.style.display = 'none'; return; }
     const p = products.find(x => String(x.id) === String(id));
     if (!p) { preview.style.display = 'none'; return; }
+    
     document.getElementById('preview-img').src = p.photo || '';
-    document.getElementById('preview-name').textContent = p.name;
+    
+    // 組合顯示名稱、供應商與預設價格資訊
+    let detailsHtml = `<span style="font-size: 13px; font-weight: 600;">${escapeHtml(p.name)}</span>`;
+    let metaInfo = [];
+    if (p.supplier) metaInfo.push(`📍 供應商: ${escapeHtml(p.supplier)}`);
+    if (p.jpyPrice) metaInfo.push(`¥${p.jpyPrice}`);
+    if (p.hkdPrice) metaInfo.push(`$${p.hkdPrice}`);
+    
+    if (metaInfo.length > 0) {
+      detailsHtml += `<br><span style="font-size: 11px; color: var(--text-muted); font-weight: normal; margin-top: 3px; display: inline-block;">${metaInfo.join(' | ')}</span>`;
+    }
+    
+    document.getElementById('preview-name').innerHTML = detailsHtml;
     preview.style.display = 'flex';
   }
 
@@ -1739,8 +1801,6 @@ alter table orders disable row level security;
     const productId = document.getElementById('product-select').value;
     const variant = document.getElementById('variant').value.trim();
     const qty = parseInt(document.getElementById('qty').value) || 0;
-    const jpyPrice = document.getElementById('jpyPrice').value;
-    const hkdPrice = document.getElementById('hkdPrice').value;
 
     if (!customer || !productId || qty <= 0) {
       alert('請輸入客戶編號、揀返產品，同埋數量');
@@ -1762,8 +1822,10 @@ alter table orders disable row level security;
       productPhoto: product ? product.photo : '',
       variant,
       qty,
-      jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
-      hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null,
+      // 自動從挑選的產品中繼承當時的價格與供應商資訊，以防日後產品修改價格
+      jpyPrice: product && product.jpyPrice ? parseFloat(product.jpyPrice) : null,
+      hkdPrice: product && product.hkdPrice ? parseFloat(product.hkdPrice) : null,
+      supplier: product && product.supplier ? product.supplier : '',
       status: '未採購',
       time: new Date().toLocaleString('zh-HK', { hour12: false })
     };
@@ -1783,8 +1845,6 @@ alter table orders disable row level security;
     document.getElementById('customer-validation').style.color = 'var(--text-muted)';
     document.getElementById('qty').value = 1;
     document.getElementById('variant').value = '';
-    document.getElementById('jpyPrice').value = '';
-    document.getElementById('hkdPrice').value = '';
     alert('訂單加入成功！');
   }
 
@@ -1808,6 +1868,7 @@ alter table orders disable row level security;
     document.getElementById('edit-qty').value = o.qty;
     document.getElementById('edit-jpyPrice').value = o.jpyPrice !== null ? o.jpyPrice : '';
     document.getElementById('edit-hkdPrice').value = o.hkdPrice !== null ? o.hkdPrice : '';
+    document.getElementById('edit-supplier').value = o.supplier || '';
     document.getElementById('edit-status').value = o.status || '未採購';
 
     const validation = validateCustomerFormat(o.customer);
@@ -1833,6 +1894,7 @@ alter table orders disable row level security;
     const qty = parseInt(document.getElementById('edit-qty').value) || 0;
     const jpyPrice = document.getElementById('edit-jpyPrice').value;
     const hkdPrice = document.getElementById('edit-hkdPrice').value;
+    const supplier = document.getElementById('edit-supplier').value.trim();
     const status = document.getElementById('edit-status').value;
 
     if (!customer || qty <= 0) { alert('請填寫客戶編號同數量'); return; }
@@ -1844,6 +1906,7 @@ alter table orders disable row level security;
       qty,
       jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
       hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null,
+      supplier,
       status
     };
 
@@ -1885,6 +1948,7 @@ alter table orders disable row level security;
       const matchSearch = 
         o.customer.toLowerCase().includes(searchVal) ||
         o.productName.toLowerCase().includes(searchVal) ||
+        (o.supplier && o.supplier.toLowerCase().includes(searchVal)) ||
         (o.variant && o.variant.toLowerCase().includes(searchVal));
       
       const matchStatus = (statusFilter === 'all') || (o.status === statusFilter);
@@ -1907,7 +1971,10 @@ alter table orders disable row level security;
             ${escapeHtml(o.customer)}
             <span class="status-badge ${getStatusClass(o.status)}">${escapeHtml(o.status || '未採購')}</span>
           </div>
-          <div class="order-product">${escapeHtml(o.productName)}</div>
+          <div class="order-product">
+            ${escapeHtml(o.productName)}
+            ${o.supplier ? `<span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">📍 ${escapeHtml(o.supplier)}</span>` : ''}
+          </div>
           ${o.variant ? `<span class="order-variant">${escapeHtml(o.variant)}</span>` : ''}
           ${(o.jpyPrice || o.hkdPrice) ? `<div class="order-price">${o.jpyPrice ? '¥'+o.jpyPrice : ''} ${o.hkdPrice ? '$'+o.hkdPrice : ''}</div>` : ''}
         </div>
@@ -1970,9 +2037,9 @@ alter table orders disable row level security;
   // ---------- 匯出 & 備份 (CSV & JSON) ----------
   function exportCSV() {
     if (orders.length === 0) { alert('未有記錄可以匯出'); return; }
-    let csv = '\uFEFF客戶編號,產品名稱,款式,數量,日圓貨價,港幣貨價,代購狀態,時間\n';
+    let csv = '\uFEFF客戶編號,產品名稱,款式,數量,日圓貨價,港幣貨價,供應商,代購狀態,時間\n';
     orders.forEach(o => {
-      csv += `${o.customer},"${o.productName}","${o.variant || ''}",${o.qty},${o.jpyPrice || ''},${o.hkdPrice || ''},"${o.status || '未採購'}",${o.time}\n`;
+      csv += `${o.customer},"${o.productName}","${o.variant || ''}",${o.qty},${o.jpyPrice || ''},${o.hkdPrice || ''},"${o.supplier || ''}","${o.status || '未採購'}",${o.time}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
