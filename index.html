@@ -40,7 +40,7 @@
     --delivered-bg: #f2f2fc;
   }
 
-  /* 2. 日系溫暖文青風 (Cozy Warm) */
+  /* 2. 日系溫慢文青風 (Cozy Warm) */
   .theme-cozy {
     --bg: #faf7f2;
     --card: #ffffff;
@@ -967,7 +967,7 @@
       <label>選擇你鍾意嘅日系/像素/積木主題（全機即時同步，不影響任何代購資料）</label>
       <select id="theme-select" onchange="changeTheme(this.value)">
         <option value="classic">經典原版 (Classic iOS)</option>
-        <option value="cozy">🎌 日系溫暖文青風 (Cozy Warm)</option>
+        <option value="cozy">🎌 日系溫慢文青風 (Cozy Warm)</option>
         <option value="manga">🎌 澀谷手繪卡通風 (Shibuya Manga Doodle)</option>
         <option value="tatami">🎌 溫泉木質禪風 (Onsen Tatami Zen)</option>
         <option value="minecraft">⛏️ Minecraft 像素方塊風 (Classic Pixel)</option>
@@ -1685,43 +1685,53 @@ alter table orders disable row level security;
   }, false);
 
   async function addProduct() {
-    const name = document.getElementById('new-product-name').value.trim();
-    if (!name) { alert('請輸入產品名稱'); return; }
-    
-    const supplier = document.getElementById('new-product-supplier').value.trim();
-    const jpyPrice = document.getElementById('new-product-jpyPrice').value;
-    const hkdPrice = document.getElementById('new-product-hkdPrice').value;
+    try {
+      const name = document.getElementById('new-product-name').value.trim();
+      if (!name) { alert('請輸入產品名稱'); return; }
+      
+      const supplier = document.getElementById('new-product-supplier').value.trim();
+      const jpyPrice = document.getElementById('new-product-jpyPrice').value;
+      const hkdPrice = document.getElementById('new-product-hkdPrice').value;
 
-    const newProd = {
-      id: Date.now(),
-      name: name,
-      photo: pendingPhoto || '',
-      supplier: supplier || '',
-      jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
-      hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null
-    };
-    
-    await saveData_Product(newProd);
-    products.push(newProd);
+      const newProd = {
+        id: Date.now(),
+        name: name,
+        photo: pendingPhoto || '',
+        supplier: supplier || '',
+        jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
+        hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null
+      };
+      
+      await saveData_Product(newProd);
+      products.push(newProd);
 
-    // 恢復預設值
-    document.getElementById('new-product-name').value = '';
-    document.getElementById('new-product-supplier').value = '';
-    document.getElementById('new-product-jpyPrice').value = '';
-    document.getElementById('new-product-hkdPrice').value = '';
-    document.getElementById('new-product-preview').style.display = 'none';
-    document.querySelector('.drop-zone-text').style.display = 'block';
-    pendingPhoto = null;
-    
-    renderProductLibrary();
-    alert('產品已加入產品庫，而家可以去「新增訂單」揀返佢');
+      // 恢復預設值
+      document.getElementById('new-product-name').value = '';
+      document.getElementById('new-product-supplier').value = '';
+      document.getElementById('new-product-jpyPrice').value = '';
+      document.getElementById('new-product-hkdPrice').value = '';
+      document.getElementById('new-product-preview').style.display = 'none';
+      document.querySelector('.drop-zone-text').style.display = 'block';
+      pendingPhoto = null;
+      
+      renderProductLibrary();
+      alert('產品已加入產品庫，而家可以去「新增訂單」揀返佢');
+    } catch (err) {
+      alert('儲存產品失敗！\n如果你用緊雲端同步，請確保已在 Supabase 執行過欄位升級指令。\n\n詳細錯誤原因：' + err.message);
+      console.error(err);
+    }
   }
 
   async function deleteProduct(id) {
     if (!confirm('刪除呢個產品？已經記錄低嘅訂單唔會受影響。')) return;
-    await deleteData_Product(id);
-    products = products.filter(p => p.id !== id);
-    renderProductLibrary();
+    try {
+      await deleteData_Product(id);
+      products = products.filter(p => p.id !== id);
+      renderProductLibrary();
+    } catch (err) {
+      alert('刪除產品失敗！\n詳細錯誤原因：' + err.message);
+      console.error(err);
+    }
   }
 
   function renderProductLibrary() {
@@ -1797,64 +1807,74 @@ alter table orders disable row level security;
   }
 
   async function addOrder() {
-    const customer = document.getElementById('customer').value.trim();
-    const productId = document.getElementById('product-select').value;
-    const variant = document.getElementById('variant').value.trim();
-    const qty = parseInt(document.getElementById('qty').value) || 0;
+    try {
+      const customer = document.getElementById('customer').value.trim();
+      const productId = document.getElementById('product-select').value;
+      const variant = document.getElementById('variant').value.trim();
+      const qty = parseInt(document.getElementById('qty').value) || 0;
 
-    if (!customer || !productId || qty <= 0) {
-      alert('請輸入客戶編號、揀返產品，同埋數量');
-      return;
+      if (!customer || !productId || qty <= 0) {
+        alert('請輸入客戶編號、揀返產品，同埋數量');
+        return;
+      }
+
+      const validation = validateCustomerFormat(customer);
+      if (!validation.valid) {
+        if (!confirm('客戶編號格式不符標準，確定要繼續加入嗎？')) return;
+      }
+
+      const product = products.find(p => String(p.id) === String(productId));
+
+      const newOrder = {
+        id: Date.now(),
+        customer,
+        productId: productId,
+        productName: product ? product.name : '（已刪除產品）',
+        productPhoto: product ? product.photo : '',
+        variant,
+        qty,
+        // 自動從挑選的產品中繼承當時的價格與供應商資訊，以防日後產品修改價格
+        jpyPrice: product && product.jpyPrice ? parseFloat(product.jpyPrice) : null,
+        hkdPrice: product && product.hkdPrice ? parseFloat(product.hkdPrice) : null,
+        supplier: product && product.supplier ? product.supplier : '',
+        status: '未採購',
+        time: new Date().toLocaleString('zh-HK', { hour12: false })
+      };
+
+      await saveData_Order(newOrder);
+      orders.push(newOrder);
+
+      if (variant && !variantHistory.includes(variant)) {
+        variantHistory.push(variant);
+        await saveData_Variant(variant);
+      }
+
+      refreshProductSelect();
+
+      document.getElementById('customer').value = '';
+      document.getElementById('customer-validation').textContent = '格式：W1234567 / L1234567 / 8位數字電話';
+      document.getElementById('customer-validation').style.color = 'var(--text-muted)';
+      document.getElementById('qty').value = 1;
+      document.getElementById('variant').value = '';
+      alert('訂單加入成功！');
+    } catch (err) {
+      alert('加入訂單失敗！\n詳細錯誤原因：' + err.message);
+      console.error(err);
     }
-
-    const validation = validateCustomerFormat(customer);
-    if (!validation.valid) {
-      if (!confirm('客戶編號格式不符標準，確定要繼續加入嗎？')) return;
-    }
-
-    const product = products.find(p => String(p.id) === String(productId));
-
-    const newOrder = {
-      id: Date.now(),
-      customer,
-      productId: productId,
-      productName: product ? product.name : '（已刪除產品）',
-      productPhoto: product ? product.photo : '',
-      variant,
-      qty,
-      // 自動從挑選的產品中繼承當時的價格與供應商資訊，以防日後產品修改價格
-      jpyPrice: product && product.jpyPrice ? parseFloat(product.jpyPrice) : null,
-      hkdPrice: product && product.hkdPrice ? parseFloat(product.hkdPrice) : null,
-      supplier: product && product.supplier ? product.supplier : '',
-      status: '未採購',
-      time: new Date().toLocaleString('zh-HK', { hour12: false })
-    };
-
-    await saveData_Order(newOrder);
-    orders.push(newOrder);
-
-    if (variant && !variantHistory.includes(variant)) {
-      variantHistory.push(variant);
-      await saveData_Variant(variant);
-    }
-
-    refreshProductSelect();
-
-    document.getElementById('customer').value = '';
-    document.getElementById('customer-validation').textContent = '格式：W1234567 / L1234567 / 8位數字電話';
-    document.getElementById('customer-validation').style.color = 'var(--text-muted)';
-    document.getElementById('qty').value = 1;
-    document.getElementById('variant').value = '';
-    alert('訂單加入成功！');
   }
 
   async function deleteOrder(id) {
     if (!confirm('確定刪除呢個訂單記錄？')) return;
-    await deleteData_Order(id);
-    orders = orders.filter(o => o.id !== id);
-    renderList();
-    renderSummary();
-    refreshProductSelect();
+    try {
+      await deleteData_Order(id);
+      orders = orders.filter(o => o.id !== id);
+      renderList();
+      renderSummary();
+      refreshProductSelect();
+    } catch (err) {
+      alert('刪除訂單失敗！\n詳細錯誤原因：' + err.message);
+      console.error(err);
+    }
   }
 
   // ---------- 編輯訂單彈窗邏輯 ----------
@@ -1885,44 +1905,49 @@ alter table orders disable row level security;
   }
 
   async function saveEditOrder() {
-    if (!editingOrderId) return;
-    const oIndex = orders.findIndex(x => x.id === editingOrderId);
-    if (oIndex === -1) return;
+    try {
+      if (!editingOrderId) return;
+      const oIndex = orders.findIndex(x => x.id === editingOrderId);
+      if (oIndex === -1) return;
 
-    const customer = document.getElementById('edit-customer').value.trim();
-    const variant = document.getElementById('edit-variant').value.trim();
-    const qty = parseInt(document.getElementById('edit-qty').value) || 0;
-    const jpyPrice = document.getElementById('edit-jpyPrice').value;
-    const hkdPrice = document.getElementById('edit-hkdPrice').value;
-    const supplier = document.getElementById('edit-supplier').value.trim();
-    const status = document.getElementById('edit-status').value;
+      const customer = document.getElementById('edit-customer').value.trim();
+      const variant = document.getElementById('edit-variant').value.trim();
+      const qty = parseInt(document.getElementById('edit-qty').value) || 0;
+      const jpyPrice = document.getElementById('edit-jpyPrice').value;
+      const hkdPrice = document.getElementById('edit-hkdPrice').value;
+      const supplier = document.getElementById('edit-supplier').value.trim();
+      const status = document.getElementById('edit-status').value;
 
-    if (!customer || qty <= 0) { alert('請填寫客戶編號同數量'); return; }
+      if (!customer || qty <= 0) { alert('請填寫客戶編號同數量'); return; }
 
-    const updatedOrder = {
-      ...orders[oIndex],
-      customer,
-      variant,
-      qty,
-      jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
-      hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null,
-      supplier,
-      status
-    };
+      const updatedOrder = {
+        ...orders[oIndex],
+        customer,
+        variant,
+        qty,
+        jpyPrice: jpyPrice ? parseFloat(jpyPrice) : null,
+        hkdPrice: hkdPrice ? parseFloat(hkdPrice) : null,
+        supplier,
+        status
+      };
 
-    await saveData_Order(updatedOrder);
-    orders[oIndex] = updatedOrder;
+      await saveData_Order(updatedOrder);
+      orders[oIndex] = updatedOrder;
 
-    if (variant && !variantHistory.includes(variant)) {
-      variantHistory.push(variant);
-      await saveData_Variant(variant);
+      if (variant && !variantHistory.includes(variant)) {
+        variantHistory.push(variant);
+        await saveData_Variant(variant);
+      }
+
+      closeEditModal();
+      renderList();
+      renderSummary();
+      refreshProductSelect();
+      alert('修改已儲存！');
+    } catch (err) {
+      alert('修改訂單失敗！\n詳細錯誤原因：' + err.message);
+      console.error(err);
     }
-
-    closeEditModal();
-    renderList();
-    renderSummary();
-    refreshProductSelect();
-    alert('修改已儲存！');
   }
 
   // ---------- 訂單清單 (搜尋與篩選) ----------
@@ -2122,17 +2147,22 @@ alter table orders disable row level security;
 
   async function clearAll() {
     if (confirm('確定要清空所有訂單記錄嗎？產品庫唔會被刪走。呢個動作唔可以復原。建議先匯出完整備份 (.json)')) {
-      if (isCloudMode) {
-        for (let o of orders) {
-          await cloudDelete('orders', o.id);
+      try {
+        if (isCloudMode) {
+          for (let o of orders) {
+            await cloudDelete('orders', o.id);
+          }
+        } else {
+          await dbClearStore('orders');
         }
-      } else {
-        await dbClearStore('orders');
+        orders = [];
+        renderList();
+        renderSummary();
+        refreshProductSelect();
+      } catch (err) {
+        alert('清空失敗！詳細錯誤原因：' + err.message);
+        console.error(err);
       }
-      orders = [];
-      renderList();
-      renderSummary();
-      refreshProductSelect();
     }
   }
 
